@@ -1,26 +1,57 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-light-100 dark:bg-dark-900 text-gray-900 dark:text-white;
+        @apply font-sans antialiased;
+    }
+
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-gray-400 dark:bg-dark-600 rounded-lg;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-gray-500 dark:bg-dark-700;
+    }
 }
 
-/* Design Scroll bar */
-::-webkit-scrollbar {
-    width: 10px;
-}
+@layer components {
+    .btn-primary {
+        @apply bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-full font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    }
 
-/* Track */
-::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
+    .btn-secondary {
+        @apply bg-gray-200 dark:bg-dark-700 hover:bg-gray-300 dark:hover:bg-dark-600 px-4 py-2 rounded-full transition-all duration-200;
+    }
 
-/* Handle */
-::-webkit-scrollbar-thumb {
-    background: #888;
-    cursor: pointer;
-}
+    .btn-outline {
+        @apply border border-gray-300 dark:border-dark-600 hover:bg-gray-100 dark:hover:bg-dark-800 px-4 py-2 rounded-full transition-all duration-200;
+    }
 
-/* Handle on hover */
-::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    .card {
+        @apply bg-white dark:bg-dark-800 rounded-xl overflow-hidden transition-transform duration-200 hover:scale-[1.02];
+    }
+
+    .input {
+        @apply bg-gray-100 dark:bg-dark-800 border border-gray-300 dark:border-dark-600 rounded-lg px-4 py-2.5 outline-none focus:border-primary transition-colors w-full;
+    }
+
+    .skeleton {
+        @apply animate-pulse bg-gray-200 dark:bg-dark-700 rounded;
+    }
 }

@@ -1,301 +1,328 @@
-import React, { useEffect, useState } from 'react'
-import styled from 'styled-components'
-import Comments from '../components/Comments'
-import Card from '../components/Card'
-import { BiBookmarkPlus, BiSolidDislike, BiSolidLike, BiDislike, BiLike } from "react-icons/bi";
-import { FaShareSquare } from "react-icons/fa";
-import { useLocation } from 'react-router-dom'
-import axios from 'axios'
-import { useDispatch, useSelector } from 'react-redux'
-import { dislike, fetchStart, fetchSuccess, like } from '../redux/videoSlice'
-import { formatDistanceToNow } from 'date-fns'
-import { subscription } from '../redux/userSlice';
-import Recomendations from '../components/Recomendations';
+import { useParams } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { videoAPI, userAPI } from '@/services/api'
+import { useAuthStore } from '@/store/authStore'
+import { useVideoStore } from '@/store/videoStore'
+import { formatViews, formatDate } from '@/lib/utils'
+import { ThumbsUp, ThumbsDown, Share2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useEffect, useState } from 'react'
+import VideoPlayer from '@/components/VideoPlayer'
+import VideoCard from '@/components/VideoCard'
+import Comments from '@/components/Comments'
+import Button from '@/components/Button'
+import { Skeleton } from '@/components/Skeleton'
+import VideoChapters from '@/components/VideoChapters'
+import VideoTranscript from '../components/VideoTranscript'
+import { Users } from 'lucide-react'
+import CreateWatchParty from '../components/CreateWatchParty'
 
-const Container = styled.div`
-  width: 100%;
-  display: flex;
-  gap: 0.4rem;
-  color: ${({ theme }) => theme.text};
 
-  @media (max-width: 992px) {
-    flex-direction: column;
-  }
-`
-const Content = styled.div`
-  flex: 7;
-`
-const Reccomendation = styled.div`
-  flex: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-`
-const VideoWrapper = styled.div`
-`
-const Details = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 
-  @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-`
-const Title = styled.h1`
-  font-size: 18px;
-  font-weight: 400;
-  margin-top: .3rem;
-  margin-bottom: .2rem;
-  color: ${({ theme }) => theme.text};
-`;
-const Info = styled.div`
-  color: ${({ theme }) => theme.textSoft};
-`;
-const Buttons = styled.div`
-  display: flex;
-  gap: 0.4rem;
-  color: ${({ theme }) => theme.text};
-`
-const Button = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 0.5rem 0.4rem;
-  border-radius: 0.5rem;
+export default function Video() {
+    const { id } = useParams()
+    const { user } = useAuthStore()
+    const { currentVideo, setCurrentVideo, toggleLike, toggleDislike } = useVideoStore()
+    const [videoElement, setVideoElement] = useState(null)
+    const [showCreateParty, setShowCreateParty] = useState(false)
+    const queryClient = useQueryClient()
 
-  transition: background-color 0.2s ease;
-  transition: transform 2s cubic-bezier(0.43, 0.42, 0.45, 0.94);
+    // Fetch video
+    const { data: videoData, isLoading: videoLoading } = useQuery({
+        queryKey: ['video', id],
+        queryFn: async () => {
+            const response = await videoAPI.getVideo(id)
+            return response.data.data || response.data
+        },
+        enabled: !!id,
+    })
 
-  &:hover{
-    background-color: ${({ theme }) => theme.bgLighter};
-  }
-`
-const LButton = styled(Button)`
-  &:active{
-    animation: popup 1s cubic-bezier(0.43, 0.42, 0.45, 0.94);
-  }
-  
-  @keyframes popup {
-    0% {
-      transform: scale(0.9);
+    const video = currentVideo || videoData
+
+    // Fetch channel
+    const { data: channel } = useQuery({
+        queryKey: ['user', video?.userId],
+        queryFn: () => userAPI.getUser(video.userId).then(res => res.data.data),
+        enabled: !!video?.userId,
+    })
+
+    // Fetch related videos
+    const { data: relatedVideos } = useQuery({
+        queryKey: ['related', video?.tags],
+        queryFn: () => videoAPI.getByTags(video.tags.join(',')).then(res => res.data.data),
+        enabled: !!video?.tags?.length,
+    })
+
+    // Add view
+    useEffect(() => {
+        if (id) {
+            videoAPI.addView(id)
+        }
+    }, [id])
+
+    // Set current video in store
+    useEffect(() => {
+        if (videoData) {
+            setCurrentVideo(videoData)
+        }
+    }, [videoData, setCurrentVideo])
+
+    // Like mutation
+    const likeMutation = useMutation({
+        mutationFn: () => userAPI.likeVideo(id),
+        onMutate: () => {
+            if (user) toggleLike(user._id)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['video', id])
+        },
+        onError: () => {
+            toast.error('Failed to like video')
+            queryClient.invalidateQueries(['video', id])
+        },
+    })
+
+    // Add view mutation
+    const addViewMutation = useMutation({
+        mutationFn: () => videoAPI.addView(id),
+    })
+
+    useEffect(() => {
+        if (video && videoElement) {
+            let viewCounted = false
+
+            const handleTimeUpdate = () => {
+                // Count view after 30 seconds of watch time
+                if (!viewCounted && videoElement.currentTime > 30) {
+                    addViewMutation.mutate()
+                    viewCounted = true
+                }
+            }
+
+            videoElement.addEventListener('timeupdate', handleTimeUpdate)
+
+            return () => {
+                videoElement.removeEventListener('timeupdate', handleTimeUpdate)
+            }
+        }
+    }, [video, videoElement])
+    // Dislike mutation
+    const dislikeMutation = useMutation({
+        mutationFn: () => userAPI.dislikeVideo(id),
+        onMutate: () => {
+            if (user) toggleDislike(user._id)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['video', id])
+        },
+        onError: () => {
+            toast.error('Failed to dislike video')
+            queryClient.invalidateQueries(['video', id])
+        },
+    })
+
+    // Subscribe mutation
+    const subscribeMutation = useMutation({
+        mutationFn: () => {
+            const isSubscribed = user?.subscribedUsers?.includes(channel._id)
+            return isSubscribed
+                ? userAPI.unsubscribe(channel._id)
+                : userAPI.subscribe(channel._id)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['user', user._id])
+            queryClient.invalidateQueries(['auth', 'me'])
+            toast.success('Subscription updated')
+        },
+        onError: () => {
+            toast.error('Failed to update subscription')
+        },
+    })
+
+    const handleLike = () => {
+        if (!user) {
+            toast.error('Please sign in to like videos')
+            return
+        }
+        likeMutation.mutate()
     }
-    50% {
-      transform: scale(1.6);
+
+    const handleDislike = () => {
+        if (!user) {
+            toast.error('Please sign in to dislike videos')
+            return
+        }
+        dislikeMutation.mutate()
     }
-    100% {
-      transform: scale(1);
+
+    const handleSubscribe = () => {
+        if (!user) {
+            toast.error('Please sign in to subscribe')
+            return
+        }
+        subscribeMutation.mutate()
     }
-  }
-`
-const HR = styled.hr`
-  height: 2px;
-  background-color: ${({ theme }) => theme.soft};
-  border: none;
-  margin: 0.6rem 0;
-`
-const Channel = styled.div`
-  display: flex;
-  /* justify-content: space-between; */
-  align-items: center;
-`
-const ChannelInfo = styled.div`
-  display: flex;
-  gap: 1rem;
-`
-const ChannelDetails = styled.div`
-  display: flex;
-  flex-direction: column;
-  color: ${({ theme }) => theme.text};
 
-`
-const ChannelName = styled.h3`
-  font-size: 1rem;
-  font-weight: 500;
-`
-const ChannelCounter = styled.span`
-  margin: 0.3rem 0;
-  color: ${({ theme }) => theme.textSoft};
-  font-size: 1rem;
-`
-const ChannelImage = styled.img`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-`
-const Description = styled.p`
-  width: 90%;
-  /* flex: 3; */
-  margin-top: 0.4rem;
-  font-size: 0.8rem;
-  color: ${({ theme }) => theme.textSoft};
-`
-const Subscribe = styled.button`
-  background-color: #cc1a00;
-  color: white;
-  font-weight: 500;
-  border: none;
-  border-radius: 3px;
-  height: max-content;
-  padding: 10px 20px;
-  cursor: pointer;
-  overflow: hidden;
-
-
-  &:active {
-    text-shadow: 6px 0 5px rgba(250, 198, 8, 0.881);
-  }
-
-  @keyframes changeTextShadow {
-    0% {
-      text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    const handleShare = () => {
+        navigator.clipboard.writeText(window.location.href)
+        toast.success('Link copied to clipboard')
     }
-    50% {
-      text-shadow: 6px 0 5px rgba(27, 227, 30, 0.7);
+
+    if (videoLoading) {
+        return (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                    <Skeleton className="aspect-video rounded-xl" />
+                    <Skeleton className="h-8 w-3/4" />
+                    <Skeleton className="h-20 w-full" />
+                </div>
+                <div className="space-y-4">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={i} className="h-24 w-full" />
+                    ))}
+                </div>
+            </div>
+        )
     }
-    100% {
-      text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+
+    if (!video) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <p className="text-xl text-gray-500">Video not found</p>
+            </div>
+        )
     }
-  }
-`;
-const Flex = styled.div`
-  display: flex;
-  align-items: center;
-  /* gap: 0.5rem; */
-`
-const VideoFrame = styled.iframe`
-  width: 100%;
-  height:28rem;
 
-  @media (max-width: 768px) {
-    height: 20rem;
-  }
-`
+    const isLiked = video.likes?.includes(user?._id)
+    const isDisliked = video.dislikes?.includes(user?._id)
+    const isSubscribed = user?.subscribedUsers?.includes(channel?._id)
+    const isOwnVideo = user?._id === channel?._id
 
-const Video = () => {
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-gray-700 dark:text-gray-200">
+            {/* Main content */}
+            <div className="lg:col-span-2 space-y-4">
+                {/* Video player */}
+                <VideoPlayer url={video.videoUrl} title={video.title} onVideoReady={setVideoElement} />
+                {video.desc && (
+                    <VideoChapters
+                        description={video.desc}
+                        onSeek={(time) => {
+                            if (videoElement) {
+                                videoElement.currentTime = time
+                            }
+                        }}
+                    />
+                )}
 
-  const path = useLocation().pathname.split("/")[2]
-  console.log('path: ', path)
-  const dispatch = useDispatch()
+                {/* Video info */}
+                <div>
+                    <h1 className="text-2xl font-bold mb-2">{video.title}</h1>
 
-  const [channel, setChannel] = useState({})
-  const { currentVideo } = useSelector((state) => state.video)
-  const { currentUser } = useSelector((state) => state.user)
-  useEffect(() => {
-    window.scrollTo(0, 0)
-    const fetchVideos = async () => {
-      dispatch(fetchStart())
-      try {
-        const videoRes = await axios.get(`/video/find/${path}`);
-        const channelRes = await axios.get(`/user/find/${videoRes.data.userId}`);
-        console.log('videoRes: ', videoRes.data)
-        console.log('channelRes: ', channelRes.data)
-        dispatch(fetchSuccess(videoRes.data))
-        // console.log('currentVideo: ', currentVideo)
-        setChannel(channelRes.data)
-      } catch (error) {
-        console.error('Failed to fetch video or channel data:', error);
-      }
-    };
-    fetchVideos();
-  }, [path, dispatch]);
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <p className="text-gray-600 dark:text-gray-400">
+                            {formatViews(video.views)} views • {formatDate(video.createdAt)}
+                        </p>
 
-  
-  const handleLike = async () => {
-    try {
-      dispatch(like(currentUser?._id))
-      await axios.put(`/user/like/${path}`)
-    } catch (error) {
-      console.error('Failed to like video:', error);
-    }
-  }
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="secondary"
+                                onClick={handleLike}
+                                className={isLiked ? 'text-primary' : ''}
+                            >
+                                <ThumbsUp className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+                                {video.likes?.length || 0}
+                            </Button>
 
-  const handleDislike = async () => {
-    try {
-      dispatch(dislike(currentUser?._id))
-      await axios.put(`/user/dislike/${path}`)
-    } catch (error) {
-      console.error('Failed to dislike video:', error);
-    }
-  }
+                            <Button
+                                variant="secondary"
+                                onClick={handleDislike}
+                                className={isDisliked ? 'text-primary' : ''}
+                            >
+                                <ThumbsDown className={`w-5 h-5 ${isDisliked ? 'fill-current' : ''}`} />
+                                {video.dislikes?.length || 0}
+                            </Button>
 
-  const handleSub = async () => {
-    dispatch(subscription(channel?._id))
-    try {
-      if (currentUser.subscribedUsers.includes(channel?._id)) {
-        await axios.put(`/user/unsub/${channel?._id}`)
-      } else {
-        await axios.put(`/user/sub/${channel?._id}`)
-      }
-    } catch (error) {
-      console.error('Failed to subscribe/unsubscribe:', error);
-    }
-  }
+                            <Button variant="secondary" onClick={() => setShowCreateParty(true)}>
+                                <Users className="w-5 h-5" />
+                                Watch Party
+                            </Button>
 
-  return (
-    <>
-      <Container>
-        <Content>
-          <VideoWrapper>
-            <VideoFrame src={currentVideo?.videoUrl} title={currentVideo?.title} controls autoPlay loop muted playsInline allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture allowfullscreen" />
-          </VideoWrapper>
-          <Title>{currentVideo?.title}</Title>
-          <Details>
-            <Info>{currentVideo?.views} views • {new Date(currentVideo?.createdAt).toLocaleDateString()} </Info>
-            <Buttons>
-              <LButton onClick={handleLike}>
-                {currentVideo?.likes.includes(currentUser?._id)
-                  ? <BiSolidLike />
-                  : <BiLike />}
-                {currentVideo?.likes.length} Like
-              </LButton>
-              <LButton onClick={handleDislike}>
-                {currentVideo?.dislikes.includes(currentUser?._id)
-                  ? <BiSolidDislike />
-                  : <BiDislike />}
-                {currentVideo?.dislikes.length} Dislike
-              </LButton>
-              <Button>
-                <FaShareSquare /> Share
-              </Button>
-              <Button>
-                <BiBookmarkPlus /> Save
-              </Button>
-            </Buttons>
-          </Details>
-          <HR />
+                            <Button variant="secondary" onClick={handleShare}>
+                                <Share2 className="w-5 h-5" />
+                                Share
+                            </Button>
+                        </div>
+                    </div>
+                </div>
 
-          <Channel>
-            <ChannelInfo>
-              <ChannelImage src={channel?.img} />
-              <ChannelDetails>
-                <ChannelName>{channel?.name}</ChannelName>
-                <ChannelCounter>{channel?.subscribers} subscribers</ChannelCounter>
-              </ChannelDetails>
-            </ChannelInfo>
+                {/* Channel info */}
+                <div className="card p-4">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-4">
+                            <img
+                                src={channel?.img || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default'}
+                                alt={channel?.name}
+                                className="w-12 h-12 rounded-full object-cover"
+                            />
+                            <div>
+                                <h3 className="font-semibold">{channel?.name}</h3>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    {channel?.subscribers || 0} subscribers
+                                </p>
+                            </div>
+                        </div>
 
-          </Channel>
-          <Flex>
-            <Description>{currentVideo?.desc}</Description>
+                        {/* Subscribe button - only show if not own video */}
+                        {!isOwnVideo && (
+                            <Button
+                                variant={isSubscribed ? 'secondary' : 'primary'}
+                                onClick={handleSubscribe}
+                                isLoading={subscribeMutation.isPending}
+                            >
+                                {isSubscribed ? 'Subscribed' : 'Subscribe'}
+                            </Button>
+                        )}
+                    </div>
 
-            <Subscribe onClick={handleSub}>
-              {currentUser?.subscribedUsers?.includes(channel?._id)
-                ? 'SUBSCRIBED'
-                : 'SUBSCRIBE'}
-            </Subscribe>
-          </Flex>
-          <HR />
-          <Comments videoId={currentVideo?._id} />
-        </Content>
-        <Reccomendation>
-          <Recomendations tags={currentVideo?.tags} />
-        </Reccomendation>
-      </Container>
-    </>
-  )
+                    {video.desc && (
+                        <p className="mt-4 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                            {video.desc}
+                        </p>
+                    )}
+                </div>
+
+                {/* Comments */}
+                <Comments videoId={id} />
+
+                {/* Transcript */}
+                <VideoTranscript
+                    videoId={id}
+                    isOwner={user?._id === video?.userId}
+                    onSeek={(time) => {
+                        if (videoElement) {
+                            videoElement.currentTime = time
+                        }
+                    }}
+                />
+
+            </div>
+
+            {/* Related videos */}
+            <div className="space-y-4">
+                <h2 className="text-xl font-bold">Related Videos</h2>
+                {relatedVideos?.filter(v => v._id !== id).slice(0, 10).map((video) => (
+                    <VideoCard key={video._id} video={video} variant="small" />
+                ))}
+            </div>
+
+            {showCreateParty && (
+                <CreateWatchParty
+                    videoId={id}
+                    onClose={() => setShowCreateParty(false)}
+                />
+            )}
+        </div>
+    )
 }
-
-export default Video

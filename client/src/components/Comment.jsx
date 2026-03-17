@@ -1,58 +1,149 @@
-import React, { useEffect, useState } from 'react'
-import styled from 'styled-components'
-import axios from 'axios'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { userAPI, commentAPI } from '@/services/api'
+import { useAuthStore } from '@/store/authStore'
+import { formatDate } from '@/lib/utils'
+import { toast } from 'sonner'
+import { Trash2, Edit2, Check, X } from 'lucide-react'
+import Button from './Button'
+import CommentReactions from './CommentReactions'
 
-const Container = styled.div`
-  display: flex;
-  gap: 10px;
-  margin: 30px 0;
-`
+export default function Comment({ comment, videoId }) {
+    const { user } = useAuthStore()
+    const queryClient = useQueryClient()
+    const [isEditing, setIsEditing] = useState(false)
+    const [editedText, setEditedText] = useState(comment.desc)
 
-const Avatar = styled.img`
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-`
+    // Fetch comment author
+    const { data: author } = useQuery({
+        queryKey: ['user', comment.userId],
+        queryFn: () => userAPI.getUser(comment.userId).then(res => res.data.data),
+        enabled: !!comment.userId,
+    })
 
-const Details = styled.div`
-  display: flex;  
-  flex-direction: column;
-  gap: 10px;
-`
+    // Delete mutation
+    const deleteMutation = useMutation({
+        mutationFn: () => commentAPI.deleteComment(comment._id),
+        onSuccess: () => {
+            queryClient.invalidateQueries(['comments', videoId])
+            toast.success('Comment deleted')
+        },
+        onError: () => {
+            toast.error('Failed to delete comment')
+        },
+    })
 
-const Name = styled.span`
-  font-size: 13px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.text};
-`
-const Text = styled.p`
-  font-size: 13px;
-  font-weight: 500;
-  color: ${({ theme }) => theme.textSoft};
-`
+    // Update mutation
+    const updateMutation = useMutation({
+        mutationFn: (desc) => commentAPI.updateComment(comment._id, { desc }),
+        onSuccess: () => {
+            queryClient.invalidateQueries(['comments', videoId])
+            setIsEditing(false)
+            toast.success('Comment updated')
+        },
+        onError: () => {
+            toast.error('Failed to update comment')
+        },
+    })
 
+    const handleUpdate = () => {
+        if (editedText.trim() && editedText !== comment.desc) {
+            updateMutation.mutate(editedText)
+        } else {
+            setIsEditing(false)
+        }
+    }
 
-const Comment = ({comment}) => {
-  const [channel, setChannel] = useState({});
+    const handleDelete = () => {
+        if (window.confirm('Are you sure you want to delete this comment?')) {
+            deleteMutation.mutate()
+        }
+    }
 
-  useEffect(() => {
-    const fetchChannel = async () => {
-      const res = await axios.get(`/user/find/${comment.userId}`);
-      setChannel(res.data)
-    };
-    fetchChannel();
-  }, [comment.userId]);
-  return (
-    <>
-      <Container>
-        <Avatar src={channel.img || "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png"} />
-        <Details>
-          <Name>{channel.name}</Name>
-          <Text>{comment.desc}</Text>
-        </Details>
-      </Container>
-    </>
-  )
+    const isOwner = user?._id === comment.userId
+
+    return (
+        <div className="flex gap-3">
+            <img
+                src={author?.img || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default'}
+                alt={author?.name}
+                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+            />
+
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-sm">{author?.name || 'Unknown'}</span>
+                    <span className="text-xs text-gray-500">
+                        {formatDate(comment.createdAt)}
+                    </span>
+                </div>
+
+                {isEditing ? (
+                    <div className="space-y-2">
+                        <textarea
+                            value={editedText}
+                            onChange={(e) => setEditedText(e.target.value)}
+                            className="input resize-none"
+                            rows={3}
+                            autoFocus
+                        />
+                        <div className="flex gap-2">
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={handleUpdate}
+                                isLoading={updateMutation.isPending}
+                            >
+                                <Check className="w-4 h-4" />
+                                Save
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setIsEditing(false)
+                                    setEditedText(comment.desc)
+                                }}
+                            >
+                                <X className="w-4 h-4" />
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-2">
+                            {comment.desc}
+                        </p>
+
+                        {/* Reactions */}
+                        <CommentReactions
+                            commentId={comment._id}
+                            reactions={comment.reactions || {}}
+                            videoId={videoId}
+                        />
+
+                        {isOwner && (
+                            <div className="flex gap-2 mt-2">
+                                <button
+                                    onClick={() => setIsEditing(true)}
+                                    className="text-xs text-gray-500 hover:text-primary transition-colors flex items-center gap-1"
+                                >
+                                    <Edit2 className="w-3 h-3" />
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={handleDelete}
+                                    className="text-xs text-gray-500 hover:text-red-500 transition-colors flex items-center gap-1"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    Delete
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    )
 }
-
-export default Comment

@@ -1,118 +1,77 @@
-import React, { useState } from "react";
-import styled from "styled-components";
-import { Link, useNavigate } from "react-router-dom";
-import { IoSearchSharp } from "react-icons/io5";
-import { RiAccountPinCircleFill } from "react-icons/ri";
-import { useSelector } from "react-redux";
-import { Flex } from "../pages/SignIn";
-const Container = styled.div`
-  position: sticky;
-  top: 0;
-  background-color: ${({ theme }) => theme.soft};
-  /* height: 2.3rem; */
-  padding: 0.2rem 0;
-`;
-const Wrapper = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-  padding: 0px 20px;
-  position: relative;
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Search, User, Menu } from 'lucide-react'
+import { useAuthStore } from '@/store/authStore'
 
-  @media (max-width: 768px) {
-    justify-content: space-between;
-  }
-`;
-const Search = styled.div`
-  width: 40%;
-  left: 0px;
-  right: 0px;
-  margin: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px;
-  border: 1px solid #ccc;
-  border-radius: 3px;
+export default function Navbar({ onMenuClick }) {
+    const [searchQuery, setSearchQuery] = useState('')
+    const navigate = useNavigate()
+    const { user } = useAuthStore()
 
-@media (max-width: 768px) {
-  margin: 0;
-
-}
-`;
-const Input = styled.input`
-  width: 60%;
-  border: none;
-  background-color: transparent;
-  outline: none;
-  color: ${({ theme }) => theme.text};
-`;
-const Button = styled.button`
-  padding: 5px 15px;
-  background-color: transparent;
-  border: 1px solid #3ea6ff;
-  color: #3ea6ff;
-  border-radius: 3px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-`;
-const Text = styled.div`
-  font-size: .8rem;
-  font-weight: 500;
-  color: ${({ theme }) => theme.text};
-`
-const Img = styled.img`
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  object-fit: cover;
-  background-color: burlywood;
-`
-const Navbar = () => {
-  const [q, setQ] = useState('')
-  const { currentUser } = useSelector((state) => state.user);
-
-  const navigate=useNavigate()
-  const handleOnchange = (e) => {
-    console.log('Q: ', q)
-    setQ(e.target.value)
-  };
-
-  const handleSearch = () => {
-    navigate(`/search?q=${q}`)
-    setQ('')
-  }
-  return (
-    <Container>
-      <Wrapper>
-        <Search>
-          <Input placeholder="Search" onChange={handleOnchange} value={q} />
-          <IoSearchSharp onClick={handleSearch } style={{ cursor: "pointer", color: "#3ea6ff" }} />
-        </Search>
-        {
-          currentUser
-            ? <>
-              <Link to="profile" style={{ textDecoration: "none" }}>
-                <Flex>
-                  <Img src={currentUser.img} alt="" />
-                  <Text>Hello {currentUser.name}</Text>
-                </Flex>
-              </Link>
-            </>
-            : <Link to="signin" style={{ textDecoration: "none" }}>
-              <Button>
-                <RiAccountPinCircleFill />
-                SIGN IN
-              </Button>
-            </Link>
+    const handleSearch = (e) => {
+        e.preventDefault()
+        if (searchQuery.trim()) {
+            navigate(`/search?q=${searchQuery}`)
+            setSearchQuery('')
         }
-      </Wrapper>
-    </Container>
-  );
-};
+    }
 
-export default Navbar;
+    return (
+        <nav className="sticky top-0 z-50 bg-white dark:bg-dark-800 border-b border-gray-200 dark:border-dark-700">
+            <div className="px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
+                    {/* Menu button (mobile) */}
+                    <button
+                        onClick={onMenuClick}
+                        className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-dark-700 rounded-lg transition-colors"
+                    >
+                        <Menu className="w-6 h-6" />
+                    </button>
+
+                    {/* Search */}
+                    <form onSubmit={handleSearch} className="flex-1 max-w-2xl">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Search videos..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full input pr-12 text-gray-700 dark:text-gray-200"
+                            />
+                            <button
+                                type="submit"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-gray-100 dark:hover:bg-dark-700 rounded-lg transition-colors"
+                            >
+                                <Search className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                    </form>
+
+                    {/* User section */}
+                    <div className="flex items-center gap-3">
+                        {user ? (
+                            <Link
+                                to="/profile"
+                                className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-dark-700 rounded-lg transition-colors"
+                            >
+                                <img
+                                    src={user.img || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default'}
+                                    alt={user.name}
+                                    className="w-8 h-8 rounded-full object-cover"
+                                />
+                                <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                    {user.name}
+                                </span>
+                            </Link>
+                        ) : (
+                            <Link to="/signin" className="btn-outline flex items-center gap-2">
+                                <User className="w-4 h-4" />
+                                <span className="hidden sm:inline text-gray-700 dark:text-gray-200">Sign In</span>
+                            </Link>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </nav>
+    )
+}
