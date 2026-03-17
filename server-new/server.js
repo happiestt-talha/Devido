@@ -5,6 +5,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
+import path from 'path';
+
 
 import connectDB from './config/database.js';
 import { notFound, errorHandler } from './middlewares/errorHandler.js';
@@ -30,6 +32,9 @@ const FE_URL = process.env.FE_URL || 'http://localhost:3000';
 
 // Security middleware
 app.use(helmet());
+
+const __dirname = path.resolve();
+app.use('/favicon.ico', express.static(path.join(__dirname, 'public', 'favicon.ico')));
 
 // Rate limiting
 const limiter = rateLimit({
