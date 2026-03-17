@@ -43,7 +43,7 @@ app.use('/api', limiter);
 
 // CORS
 app.use(cors({
-  origin: [FE_URL, 'http://localhost:3000'],
+  origin: [FE_URL, 'http://localhost:3000', "https://devido.live", "https://www.devido.live"],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
